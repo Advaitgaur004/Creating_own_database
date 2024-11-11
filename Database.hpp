@@ -5,6 +5,8 @@
 #include "Table.hpp"
 #include <unordered_map>
 #include <memory>
+#include <vector>
+#include <string>
 
 class Database {
 private:
@@ -16,6 +18,8 @@ public:
     void createTable(const std::string& name, const std::vector<std::string>& columns);
     void loadTable(const std::string& name);
     Table* getTable(const std::string& name);
+    void showTables();
+    void showTable(const std::string& name);
 
     void run();
 };

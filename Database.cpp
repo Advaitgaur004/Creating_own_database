@@ -1,4 +1,4 @@
-// Database.cpp (Updated)
+// Database.cpp
 #include "Database.hpp"
 #include <sstream>
 #include <algorithm>
@@ -40,6 +40,21 @@ Table* Database::getTable(const std::string& name) {
     return nullptr;
 }
 
+void Database::showTables() {
+    std::cout << "Tables:\n";
+    for (const auto& pair : tables) {
+        std::cout << "- " << pair.first << "\n";
+    }
+}
+
+void Database::showTable(const std::string& name) {
+    Table* table = getTable(name);
+    if (table) {
+        std::vector<std::string> all_columns; // Empty vector indicates all columns
+        table->select(all_columns); // Select without conditions to display all records
+    }
+}
+
 void Database::run() {
     std::string input;
     std::cout << "Welcome to MiniDB! Enter SQL commands or 'exit' to quit.\n";
@@ -51,10 +66,11 @@ void Database::run() {
         // Exit condition
         if (input == "exit") break;
 
-        // Simple parsing
+        // Convert input to uppercase for command identification
         std::stringstream ss(input);
         std::string command;
         ss >> command;
+        std::string original_command = command; // Preserve original for case-sensitive parts
         std::transform(command.begin(), command.end(), command.begin(), ::toupper);
 
         if (command == "CREATE") {
@@ -116,10 +132,10 @@ void Database::run() {
             }
         }
         else if (command == "SELECT") {
+            // Extract selected columns until 'FROM' is found
             std::vector<std::string> selected_columns;
             std::string token;
 
-            // Extract selected columns until 'FROM' is found
             while (ss >> token && 
                    token != "FROM" && 
                    token != "from" && 
@@ -145,22 +161,56 @@ void Database::run() {
                 continue;
             }
 
-            // Initialize variables for WHERE clause
-            std::string where_keyword, where_column, where_value;
+            // Initialize variables for WHERE, ORDER BY, GROUP BY clauses
+            std::string clause;
+            std::string where_column, where_value;
+            std::vector<std::pair<std::string, std::string>> order_by; // column and direction
+            std::vector<std::string> group_by;
 
-            // Check for 'WHERE' clause
-            ss >> where_keyword;
-            std::transform(where_keyword.begin(), where_keyword.end(), where_keyword.begin(), ::toupper);
-            if (where_keyword == "WHERE") {
-                ss >> where_column >> where_value;
-                // Remove potential semicolon at the end of where_value
-                if (!where_value.empty() && where_value.back() == ';') {
-                    where_value.pop_back();
+            while (ss >> clause) {
+                std::string upper_clause = clause;
+                std::transform(upper_clause.begin(), upper_clause.end(), upper_clause.begin(), ::toupper);
+                if (upper_clause == "WHERE") {
+                    ss >> where_column >> where_value;
+                    // Remove potential semicolon at the end of where_value
+                    if (!where_value.empty() && where_value.back() == ';') {
+                        where_value.pop_back();
+                    }
                 }
-            } else if (!where_keyword.empty()) {
-                // If the keyword is not 'WHERE' and not the end, it's a syntax error
-                std::cerr << "Error: Unrecognized keyword '" << where_keyword << "'.\n";
-                continue;
+                else if (upper_clause == "ORDER") {
+                    std::string by;
+                    ss >> by;
+                    std::transform(by.begin(), by.end(), by.begin(), ::toupper);
+                    if (by != "BY") {
+                        std::cerr << "Error: Invalid syntax after 'ORDER'. Did you mean 'ORDER BY'? \n";
+                        break;
+                    }
+                    std::string order_col, direction = "ASC";
+                    ss >> order_col;
+                    ss >> direction;
+                    std::transform(direction.begin(), direction.end(), direction.begin(), ::toupper);
+                    if (direction != "ASC" && direction != "DESC") {
+                        direction = "ASC"; // Default direction
+                        ss.unget(); // Put back the non-direction token if it's not direction
+                    }
+                    order_by.emplace_back(order_col, direction);
+                }
+                else if (upper_clause == "GROUP") {
+                    std::string by;
+                    ss >> by;
+                    std::transform(by.begin(), by.end(), by.begin(), ::toupper);
+                    if (by != "BY") {
+                        std::cerr << "Error: Invalid syntax after 'GROUP'. Did you mean 'GROUP BY'? \n";
+                        break;
+                    }
+                    std::string group_col;
+                    ss >> group_col;
+                    group_by.emplace_back(group_col);
+                }
+                else {
+                    std::cerr << "Error: Unrecognized clause '" << clause << "'.\n";
+                    break;
+                }
             }
 
             // Handle '*' to select all columns
@@ -171,7 +221,91 @@ void Database::run() {
             // Retrieve the table and perform the select operation
             Table* table = getTable(table_name);
             if (table) {
-                table->select(selected_columns, where_column, where_value);
+                table->select(selected_columns, where_column, where_value, order_by, group_by);
+            }
+        }
+        else if (command == "UPDATE") {
+            std::string table_name, set_keyword;
+            ss >> table_name >> set_keyword;
+            std::transform(set_keyword.begin(), set_keyword.end(), set_keyword.begin(), ::toupper);
+            if (set_keyword != "SET") {
+                std::cerr << "Error: Invalid syntax. Did you mean 'SET'? \n";
+                continue;
+            }
+            std::string set_column, equal_sign, set_value;
+            ss >> set_column >> equal_sign >> set_value;
+            if (equal_sign != "=") {
+                std::cerr << "Error: Invalid syntax for SET. Expected '='.\n";
+                continue;
+            }
+
+            // Handle optional WHERE clause
+            std::string clause;
+            std::string where_column, where_value;
+            if (ss >> clause) {
+                std::string upper_clause = clause;
+                std::transform(upper_clause.begin(), upper_clause.end(), upper_clause.begin(), ::toupper);
+                if (upper_clause == "WHERE") {
+                    ss >> where_column >> where_value;
+                    // Remove potential semicolon at the end of where_value
+                    if (!where_value.empty() && where_value.back() == ';') {
+                        where_value.pop_back();
+                    }
+                }
+                else {
+                    std::cerr << "Error: Unrecognized clause '" << clause << "' in UPDATE.\n";
+                    continue;
+                }
+            }
+
+            Table* table = getTable(table_name);
+            if (table) {
+                table->update(set_column, set_value, where_column, where_value);
+            }
+        }
+        else if (command == "DELETE") {
+            std::string from_keyword, table_name;
+            ss >> from_keyword >> table_name;
+            std::transform(from_keyword.begin(), from_keyword.end(), from_keyword.begin(), ::toupper);
+            if (from_keyword != "FROM") {
+                std::cerr << "Error: Invalid syntax. Did you mean 'DELETE FROM'? \n";
+                continue;
+            }
+
+            // Handle optional WHERE clause
+            std::string clause;
+            std::string where_column, where_value;
+            if (ss >> clause) {
+                std::string upper_clause = clause;
+                std::transform(upper_clause.begin(), upper_clause.end(), upper_clause.begin(), ::toupper);
+                if (upper_clause == "WHERE") {
+                    ss >> where_column >> where_value;
+                    // Remove potential semicolon at the end of where_value
+                    if (!where_value.empty() && where_value.back() == ';') {
+                        where_value.pop_back();
+                    }
+                }
+                else {
+                    std::cerr << "Error: Unrecognized clause '" << clause << "' in DELETE.\n";
+                    continue;
+                }
+            }
+
+            Table* table = getTable(table_name);
+            if (table) {
+                table->deleteRecords(where_column, where_value);
+            }
+        }
+        else if (command == "SHOW") {
+            std::string target;
+            ss >> target;
+            std::transform(target.begin(), target.end(), target.begin(), ::toupper);
+            if (target == "TABLES") {
+                showTables();
+            }
+            else {
+                // Assume it's a table name
+                showTable(target);
             }
         }
         else {

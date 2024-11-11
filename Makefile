@@ -9,10 +9,10 @@ TARGET = minidb
 all: $(TARGET)
 
 $(TARGET): $(OBJS)
-	$(CXX) $(CXXFLAGS) -o $(TARGET) $(OBJS)
+        $(CXX) $(CXXFLAGS) -o $(TARGET) $(OBJS) -lstdc++fs
 
 %.o: %.cpp
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+        $(CXX) $(CXXFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(OBJS) $(TARGET)
+        rm -f $(OBJS) $(TARGET)
