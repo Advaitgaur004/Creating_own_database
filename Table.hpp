@@ -17,11 +17,6 @@ private:
     std::vector<Record> records;
     std::string filepath;
 
-    // Helper functions
-    static bool compareRecords(const Record& a, const Record& b, const std::vector<std::pair<std::string, std::string>>& order_by);
-    void sortRecords(const std::vector<std::pair<std::string, std::string>>& order_by);
-    void groupRecords(const std::vector<std::string>& group_by);
-
 public:
     Table(const std::string& name, const std::vector<std::string>& columns);
     Table(const std::string& name); // Load existing table
@@ -40,6 +35,10 @@ public:
     void save();
     void load();
     const std::string& getName() const { return name; }
+    const std::vector<std::string>& getColumns() const { return columns; }
+
+    // For transaction backup
+    Table(const Table& other) : name(other.name), columns(other.columns), records(other.records), filepath(other.filepath) {}
 };
 
 #endif // TABLE_HPP

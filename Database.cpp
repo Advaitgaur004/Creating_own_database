@@ -13,6 +13,9 @@ void Database::createTable(const std::string& name, const std::vector<std::strin
         return;
     }
     tables[name] = std::make_unique<Table>(name, columns);
+    if (!transaction_active) {
+        tables[name]->save();
+    }
     std::cout << "Table " << name << " created successfully.\n";
 }
 
@@ -53,6 +56,60 @@ void Database::showTable(const std::string& name) {
         std::vector<std::string> all_columns; // Empty vector indicates all columns
         table->select(all_columns); // Select without conditions to display all records
     }
+}
+
+void Database::describeTable(const std::string& name) {
+    Table* table = getTable(name);
+    if (table) {
+        std::cout << "Table: " << name << "\n";
+        std::cout << "Columns:\n";
+        for (const auto& col : table->getColumns()) {
+            std::cout << "- " << col << "\n";
+        }
+    }
+}
+
+void Database::beginTransaction() {
+    if (transaction_active) {
+        std::cerr << "Error: Transaction already in progress.\n";
+        return;
+    }
+    // Backup current tables
+    for (auto& pair : tables) {
+        table_backups[pair.first] = std::make_unique<Table>(*pair.second);
+    }
+    transaction_active = true;
+    std::cout << "Transaction started.\n";
+}
+
+void Database::commitTransaction() {
+    if (!transaction_active) {
+        std::cerr << "Error: No active transaction to commit.\n";
+        return;
+    }
+    // Save all tables
+    for (auto& pair : tables) {
+        pair.second->save();
+    }
+    table_backups.clear();
+    transaction_active = false;
+    std::cout << "Transaction committed.\n";
+}
+
+void Database::rollbackTransaction() {
+    if (!transaction_active) {
+        std::cerr << "Error: No active transaction to rollback.\n";
+        return;
+    }
+    // Restore tables from backups
+    for (auto& pair : table_backups) {
+        if (tables.find(pair.first) != tables.end()) {
+            tables[pair.first] = std::move(pair.second);
+        }
+    }
+    table_backups.clear();
+    transaction_active = false;
+    std::cout << "Transaction rolled back.\n";
 }
 
 void Database::run() {
@@ -128,6 +185,9 @@ void Database::run() {
             Table* table = getTable(table_name);
             if (table) {
                 table->insert(values);
+                if (!transaction_active) {
+                    table->save();
+                }
                 std::cout << "Record inserted into " << table_name << ".\n";
             }
         }
@@ -187,11 +247,15 @@ void Database::run() {
                     }
                     std::string order_col, direction = "ASC";
                     ss >> order_col;
-                    ss >> direction;
-                    std::transform(direction.begin(), direction.end(), direction.begin(), ::toupper);
-                    if (direction != "ASC" && direction != "DESC") {
-                        direction = "ASC"; // Default direction
-                        ss.unget(); // Put back the non-direction token if it's not direction
+                    if (!(ss >> direction)) {
+                        direction = "ASC";
+                    }
+                    else {
+                        std::transform(direction.begin(), direction.end(), direction.begin(), ::toupper);
+                        if (direction != "ASC" && direction != "DESC") {
+                            ss.unget(); // Put back the non-direction token if it's not direction
+                            direction = "ASC";
+                        }
                     }
                     order_by.emplace_back(order_col, direction);
                 }
@@ -261,6 +325,9 @@ void Database::run() {
             Table* table = getTable(table_name);
             if (table) {
                 table->update(set_column, set_value, where_column, where_value);
+                if (!transaction_active) {
+                    table->save();
+                }
             }
         }
         else if (command == "DELETE") {
@@ -294,6 +361,9 @@ void Database::run() {
             Table* table = getTable(table_name);
             if (table) {
                 table->deleteRecords(where_column, where_value);
+                if (!transaction_active) {
+                    table->save();
+                }
             }
         }
         else if (command == "SHOW") {
@@ -307,6 +377,31 @@ void Database::run() {
                 // Assume it's a table name
                 showTable(target);
             }
+        }
+        else if (command == "DESCRIBE") {
+            std::string table_name;
+            ss >> table_name;
+            if (table_name.empty()) {
+                std::cerr << "Error: Missing table name for DESCRIBE.\n";
+                continue;
+            }
+            describeTable(table_name);
+        }
+        else if (command == "BEGIN") {
+            std::string transaction_keyword;
+            ss >> transaction_keyword;
+            std::transform(transaction_keyword.begin(), transaction_keyword.end(), transaction_keyword.begin(), ::toupper);
+            if (transaction_keyword != "TRANSACTION" && transaction_keyword != "TRANSACTION;") {
+                std::cerr << "Error: Invalid syntax. Use 'BEGIN TRANSACTION'.\n";
+                continue;
+            }
+            beginTransaction();
+        }
+        else if (command == "COMMIT") {
+            commitTransaction();
+        }
+        else if (command == "ROLLBACK") {
+            rollbackTransaction();
         }
         else {
             std::cerr << "Error: Unrecognized command.\n";

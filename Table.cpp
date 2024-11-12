@@ -23,7 +23,6 @@ void Table::insert(const std::vector<std::string>& fields) {
         return;
     }
     records.emplace_back(fields);
-    save();
 }
 
 void Table::select(const std::vector<std::string>& select_columns, 
@@ -210,7 +209,6 @@ void Table::update(const std::string& set_column, const std::string& set_value,
             updated_count++;
         }
     }
-    save();
     std::cout << "Updated " << updated_count << " record(s) in " << name << ".\n";
 }
 
@@ -235,7 +233,6 @@ void Table::deleteRecords(const std::string& where_column, const std::string& wh
         records.end()
     );
     auto deleted_count = initial_size - records.size();
-    save();
     std::cout << "Deleted " << deleted_count << " record(s) from " << name << ".\n";
 }
 

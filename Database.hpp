@@ -11,6 +11,9 @@
 class Database {
 private:
     std::unordered_map<std::string, std::unique_ptr<Table>> tables;
+    // Transaction support
+    bool transaction_active = false;
+    std::unordered_map<std::string, std::unique_ptr<Table>> table_backups;
 
 public:
     Database() = default;
@@ -20,6 +23,12 @@ public:
     Table* getTable(const std::string& name);
     void showTables();
     void showTable(const std::string& name);
+    void describeTable(const std::string& name);
+
+    // Transaction methods
+    void beginTransaction();
+    void commitTransaction();
+    void rollbackTransaction();
 
     void run();
 };
