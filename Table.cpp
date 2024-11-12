@@ -26,26 +26,142 @@ void Table::insert(const std::vector<std::string>& fields) {
 }
 
 void Table::select(const std::vector<std::string>& select_columns, 
+                  const std::vector<std::pair<std::string, std::string>>& aggregates,
                   const std::string& where_column, 
                   const std::string& where_value,
                   const std::vector<std::pair<std::string, std::string>>& order_by,
                   const std::vector<std::string>& group_by) {
     // Determine columns to display
     std::vector<int> col_indices;
-    if (select_columns.empty()) { // Select all
-        for (size_t i = 0; i < columns.size(); ++i) {
-            col_indices.push_back(i);
+    for (const auto& col : select_columns) {
+        auto it = std::find(columns.begin(), columns.end(), col);
+        if (it != columns.end()) {
+            col_indices.push_back(std::distance(columns.begin(), it));
+        } else {
+            std::cerr << "Error: Column " << col << " does not exist.\n";
+            return;
         }
-    } else {
-        for (const auto& col : select_columns) {
-            auto it = std::find(columns.begin(), columns.end(), col);
+    }
+
+    // Handle GROUP BY
+    if (!group_by.empty()) {
+        // Ensure all group_by columns exist
+        std::vector<int> group_indices;
+        for (const auto& gb_col : group_by) {
+            auto it = std::find(columns.begin(), columns.end(), gb_col);
             if (it != columns.end()) {
-                col_indices.push_back(std::distance(columns.begin(), it));
+                group_indices.push_back(std::distance(columns.begin(), it));
             } else {
-                std::cerr << "Error: Column " << col << " does not exist.\n";
+                std::cerr << "Error: GROUP BY column " << gb_col << " does not exist.\n";
                 return;
             }
         }
+
+        // Prepare aggregate functions
+        std::vector<std::pair<std::string, int>> agg_functions; // function name and column index (-1 for COUNT(*))
+        for (const auto& agg : aggregates) {
+            std::string func = agg.first;
+            std::string target = agg.second;
+            if (func == "COUNT") {
+                if (target == "*") {
+                    agg_functions.emplace_back(func, -1);
+                } else {
+                    auto it = std::find(columns.begin(), columns.end(), target);
+                    if (it != columns.end()) {
+                        agg_functions.emplace_back(func, std::distance(columns.begin(), it));
+                    } else {
+                        std::cerr << "Error: COUNT target column " << target << " does not exist.\n";
+                        return;
+                    }
+                }
+            }
+            else {
+                std::cerr << "Error: Unsupported aggregate function '" << func << "'.\n";
+                return;
+            }
+        }
+
+        // Group records
+        std::map<std::string, std::vector<Record>> grouped_records;
+        for (const auto& record : records) {
+            bool match = true;
+            if (!where_column.empty()) {
+                auto it = std::find(columns.begin(), columns.end(), where_column);
+                if (it != columns.end()) {
+                    int idx = std::distance(columns.begin(), it);
+                    if (record.fields[idx] != where_value) {
+                        match = false;
+                    }
+                } else {
+                    std::cerr << "Error: WHERE column " << where_column << " does not exist.\n";
+                    return;
+                }
+            }
+            if (match) {
+                std::string key;
+                for (const auto& idx : group_indices) {
+                    key += record.fields[idx] + "_";
+                }
+                grouped_records[key].emplace_back(record);
+            }
+        }
+
+        // Print header
+        for (size_t i = 0; i < group_by.size(); ++i) {
+            std::cout << group_by[i];
+            if (i != group_by.size() - 1 || !agg_functions.empty()) std::cout << " | ";
+        }
+        for (size_t i = 0; i < agg_functions.size(); ++i) {
+            std::cout << agg_functions[i].first << "(" << (agg_functions[i].second == -1 ? "*" : columns[agg_functions[i].second]) << ")";
+            if (i != agg_functions.size() - 1) std::cout << " | ";
+        }
+        std::cout << "\n";
+
+        // Print separator
+        for (size_t i = 0; i < group_by.size(); ++i) {
+            std::cout << "--------";
+            if (i != group_by.size() - 1 || !agg_functions.empty()) std::cout << "+";
+        }
+        for (size_t i = 0; i < agg_functions.size(); ++i) {
+            std::cout << "--------";
+            if (i != agg_functions.size() - 1) std::cout << "+";
+        }
+        std::cout << "\n";
+
+        // Print grouped records with aggregates
+        for (const auto& pair : grouped_records) {
+            std::stringstream ss(pair.first);
+            std::string value;
+            size_t idx = 0;
+            while (std::getline(ss, value, '_')) {
+                if (idx < group_by.size()) {
+                    std::cout << value;
+                    if (idx != group_by.size() - 1 || !agg_functions.empty()) std::cout << " | ";
+                }
+                idx++;
+            }
+            for (size_t i = 0; i < agg_functions.size(); ++i) {
+                if (agg_functions[i].first == "COUNT") {
+                    if (agg_functions[i].second == -1) {
+                        std::cout << pair.second.size();
+                    }
+                    else {
+                        // Count non-empty values in the specified column
+                        int count = 0;
+                        for (const auto& rec : pair.second) {
+                            if (!rec.fields[agg_functions[i].second].empty()) {
+                                count++;
+                            }
+                        }
+                        std::cout << count;
+                    }
+                }
+                // Future aggregate functions can be handled here
+                if (i != agg_functions.size() - 1) std::cout << " | ";
+            }
+            std::cout << "\n";
+        }
+        return;
     }
 
     // Filter records based on WHERE clause
@@ -67,64 +183,6 @@ void Table::select(const std::vector<std::string>& select_columns,
         if (match) {
             filtered_records.emplace_back(record);
         }
-    }
-
-    // Handle GROUP BY
-    if (!group_by.empty()) {
-        // For simplicity, we'll implement COUNT aggregate
-        std::map<std::string, int> group_counts;
-        for (const auto& record : filtered_records) {
-            std::string key;
-            for (const auto& gb_col : group_by) {
-                auto it = std::find(columns.begin(), columns.end(), gb_col);
-                if (it != columns.end()) {
-                    int idx = std::distance(columns.begin(), it);
-                    key += record.fields[idx] + "_";
-                } else {
-                    std::cerr << "Error: GROUP BY column " << gb_col << " does not exist.\n";
-                    return;
-                }
-            }
-            group_counts[key]++;
-        }
-
-        // Print group counts
-        // Print header
-        for (size_t i = 0; i < group_by.size(); ++i) {
-            std::cout << group_by[i];
-            if (i != group_by.size() - 1) std::cout << " | ";
-        }
-        if (!group_by.empty()) {
-            std::cout << " | Count";
-        }
-        std::cout << "\n";
-
-        // Print separator
-        for (size_t i = 0; i < group_by.size(); ++i) {
-            std::cout << "--------";
-            if (i != group_by.size() - 1) std::cout << "+";
-        }
-        if (!group_by.empty()) {
-            std::cout << "+-------";
-        }
-        std::cout << "\n";
-
-        // Print group counts
-        for (const auto& pair : group_counts) {
-            std::stringstream ss(pair.first);
-            std::string value;
-            size_t idx = 0;
-            while (std::getline(ss, value, '_')) {
-                if (idx < group_by.size()) {
-                    std::cout << value;
-                    if (idx != group_by.size() - 1) std::cout << " | ";
-                }
-                idx++;
-            }
-            std::cout << " | " << pair.second << "\n";
-        }
-
-        return;
     }
 
     // Handle ORDER BY
@@ -155,16 +213,24 @@ void Table::select(const std::vector<std::string>& select_columns,
     }
 
     // Print header
-    for (size_t i = 0; i < col_indices.size(); ++i) {
-        std::cout << columns[col_indices[i]];
-        if (i != col_indices.size() - 1) std::cout << " | ";
+    for (size_t i = 0; i < select_columns.size(); ++i) {
+        std::cout << select_columns[i];
+        if (i != select_columns.size() - 1 || !aggregates.empty()) std::cout << " | ";
+    }
+    for (size_t i = 0; i < aggregates.size(); ++i) {
+        std::cout << aggregates[i].first << "(" << aggregates[i].second << ")";
+        if (i != aggregates.size() - 1) std::cout << " | ";
     }
     std::cout << "\n";
 
     // Print separator
-    for (size_t i = 0; i < col_indices.size(); ++i) {
+    for (size_t i = 0; i < select_columns.size(); ++i) {
         std::cout << "--------";
-        if (i != col_indices.size() - 1) std::cout << "+";
+        if (i != select_columns.size() - 1 || !aggregates.empty()) std::cout << "+";
+    }
+    for (size_t i = 0; i < aggregates.size(); ++i) {
+        std::cout << "--------";
+        if (i != aggregates.size() - 1) std::cout << "+";
     }
     std::cout << "\n";
 
@@ -172,7 +238,31 @@ void Table::select(const std::vector<std::string>& select_columns,
     for (const auto& record : filtered_records) {
         for (size_t i = 0; i < col_indices.size(); ++i) {
             std::cout << record.fields[col_indices[i]];
-            if (i != col_indices.size() - 1) std::cout << " | ";
+            if (i != col_indices.size() - 1 || !aggregates.empty()) std::cout << " | ";
+        }
+        // Handle aggregates (if any without GROUP BY, typically SUM, COUNT, etc. would require aggregation over all records)
+        for (size_t i = 0; i < aggregates.size(); ++i) {
+            if (aggregates[i].first == "COUNT") {
+                if (aggregates[i].second == "*") {
+                    std::cout << "1"; // Each record counts as 1
+                }
+                else {
+                    // Count non-empty values in the specified column
+                    int count = 0;
+                    for (const auto& rec : filtered_records) {
+                        auto it = std::find(columns.begin(), columns.end(), aggregates[i].second);
+                        if (it != columns.end()) {
+                            int idx = std::distance(columns.begin(), it);
+                            if (!rec.fields[idx].empty()) {
+                                count++;
+                            }
+                        }
+                    }
+                    std::cout << count;
+                }
+            }
+            // Future aggregate functions can be handled here
+            if (i != aggregates.size() - 1) std::cout << " | ";
         }
         std::cout << "\n";
     }

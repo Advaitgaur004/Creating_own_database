@@ -23,6 +23,7 @@ public:
 
     void insert(const std::vector<std::string>& fields);
     void select(const std::vector<std::string>& select_columns, 
+               const std::vector<std::pair<std::string, std::string>>& aggregates,
                const std::string& where_column = "", 
                const std::string& where_value = "",
                const std::vector<std::pair<std::string, std::string>>& order_by = {},

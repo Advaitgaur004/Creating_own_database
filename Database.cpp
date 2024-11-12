@@ -54,7 +54,8 @@ void Database::showTable(const std::string& name) {
     Table* table = getTable(name);
     if (table) {
         std::vector<std::string> all_columns; // Empty vector indicates all columns
-        table->select(all_columns); // Select without conditions to display all records
+        std::vector<std::pair<std::string, std::string>> aggregates;
+        table->select(all_columns, aggregates, "", "", {}, {});
     }
 }
 
@@ -180,6 +181,10 @@ void Database::run() {
                 val.erase(std::find_if(val.rbegin(), val.rend(), [](unsigned char ch) {
                     return !std::isspace(ch);
                 }).base(), val.end());
+                // Remove quotes if present
+                if (!val.empty() && val.front() == '\'' && val.back() == '\'') {
+                    val = val.substr(1, val.size() - 2);
+                }
                 values.push_back(val);
             }
             Table* table = getTable(table_name);
@@ -194,17 +199,35 @@ void Database::run() {
         else if (command == "SELECT") {
             // Extract selected columns until 'FROM' is found
             std::vector<std::string> selected_columns;
+            std::vector<std::pair<std::string, std::string>> aggregates; // aggregate function and column
             std::string token;
 
-            while (ss >> token && 
-                   token != "FROM" && 
-                   token != "from" && 
+            while (ss >> token &&
+                   token != "FROM" &&
+                   token != "from" &&
                    token != "From") {
                 // Handle cases where columns are separated by commas
                 if (token.back() == ',') {
                     token.pop_back(); // Remove trailing comma
                 }
-                selected_columns.push_back(token);
+                // Check for aggregate functions
+                size_t pos = token.find('(');
+                if (pos != std::string::npos && token.back() == ')') {
+                    std::string func = token.substr(0, pos);
+                    std::string arg = token.substr(pos + 1, token.size() - pos - 2);
+                    std::transform(func.begin(), func.end(), func.begin(), ::toupper);
+                    if (func == "COUNT") {
+                        aggregates.emplace_back("COUNT", arg);
+                    }
+                    else {
+                        std::cerr << "Error: Unsupported aggregate function '" << func << "'.\n";
+                        aggregates.clear();
+                        break;
+                    }
+                }
+                else {
+                    selected_columns.push_back(token);
+                }
             }
 
             // Check if 'FROM' keyword was found
@@ -235,6 +258,10 @@ void Database::run() {
                     // Remove potential semicolon at the end of where_value
                     if (!where_value.empty() && where_value.back() == ';') {
                         where_value.pop_back();
+                    }
+                    // Remove quotes if present
+                    if (!where_value.empty() && where_value.front() == '\'' && where_value.back() == '\'') {
+                        where_value = where_value.substr(1, where_value.size() - 2);
                     }
                 }
                 else if (upper_clause == "ORDER") {
@@ -285,7 +312,7 @@ void Database::run() {
             // Retrieve the table and perform the select operation
             Table* table = getTable(table_name);
             if (table) {
-                table->select(selected_columns, where_column, where_value, order_by, group_by);
+                table->select(selected_columns, aggregates, where_column, where_value, order_by, group_by);
             }
         }
         else if (command == "UPDATE") {
@@ -303,6 +330,11 @@ void Database::run() {
                 continue;
             }
 
+            // Remove quotes if present
+            if (!set_value.empty() && set_value.front() == '\'' && set_value.back() == '\'') {
+                set_value = set_value.substr(1, set_value.size() - 2);
+            }
+
             // Handle optional WHERE clause
             std::string clause;
             std::string where_column, where_value;
@@ -314,6 +346,10 @@ void Database::run() {
                     // Remove potential semicolon at the end of where_value
                     if (!where_value.empty() && where_value.back() == ';') {
                         where_value.pop_back();
+                    }
+                    // Remove quotes if present
+                    if (!where_value.empty() && where_value.front() == '\'' && where_value.back() == '\'') {
+                        where_value = where_value.substr(1, where_value.size() - 2);
                     }
                 }
                 else {
@@ -350,6 +386,10 @@ void Database::run() {
                     // Remove potential semicolon at the end of where_value
                     if (!where_value.empty() && where_value.back() == ';') {
                         where_value.pop_back();
+                    }
+                    // Remove quotes if present
+                    if (!where_value.empty() && where_value.front() == '\'' && where_value.back() == '\'') {
+                        where_value = where_value.substr(1, where_value.size() - 2);
                     }
                 }
                 else {
