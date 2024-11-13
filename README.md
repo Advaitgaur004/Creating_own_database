@@ -100,7 +100,6 @@ make
 2. **Table Class**
    - Manages individual table structure and data
    - Handles CRUD operations
-   - Supports data persistence through file I/O
 
 
 ### Data Storage
