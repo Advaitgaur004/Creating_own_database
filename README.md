@@ -1,4 +1,3 @@
-
 # Creating_own_database
 
 A lightweight C++ database implementation featuring SQL-like operations and transaction management.
@@ -102,7 +101,6 @@ make
    - Manages individual table structure and data
    - Handles CRUD operations
 
-
 ### Data Storage
 
 - Tables are stored in a `data` directory
@@ -116,4 +114,72 @@ make
 MiniDB> CREATE TABLE users (id, name, email)
 MiniDB> INSERT INTO users VALUES (1, "John", "john@email.com")
 MiniDB> SELECT * FROM users
-# Creating_own_database
+```
+
+## Example Commands
+
+```sql
+-- Create the "students" table
+CREATE TABLE students (id, name, rollno)
+
+-- Insert records into the "students" table
+INSERT INTO students VALUES (1, 'Advait', 'B22CS004')
+INSERT INTO students VALUES (2, 'Qazi', 'B22CS087')
+INSERT INTO students VALUES (3, 'Aditya', 'B22CS103')
+
+-- Display all records from the "students" table
+SELECT * FROM students
+
+-- Display specific columns with a condition
+SELECT name, rollno FROM students WHERE id 2
+
+-- Update a record in the "students" table
+UPDATE students SET name = 'Talha' WHERE id 2
+
+-- Delete a specific record from the "students" table
+DELETE FROM students WHERE id 3
+
+-- Display all records ordered by name in descending order
+SELECT * FROM students ORDER BY name DESC
+
+-- Describe the structure of the "students" table
+DESCRIBE students
+
+-- Show all tables in the database
+SHOW TABLES
+
+-- Begin a transaction
+BEGIN TRANSACTION
+
+-- Insert a new record within the transaction
+INSERT INTO students VALUES (4, 'Aditya', 'B22ES003')
+
+-- Delete a record within the transaction
+DELETE FROM students WHERE id 1
+
+-- Rollback the transaction (undo the insert and delete)
+ROLLBACK
+
+-- Verify the state of the "students" table after rollback
+SELECT * FROM students
+
+-- Begin another transaction
+BEGIN TRANSACTION
+
+-- Insert a new record within the transaction
+INSERT INTO students VALUES (5, 'Aditya', 'B22ES003')
+
+-- Update a record within the transaction
+UPDATE students SET rollno = 'B22CS103' WHERE name 'Aditya'
+
+-- Commit the transaction (save the update)
+COMMIT
+
+-- Verify the final state of the "students" table
+SELECT * FROM students
+
+-- Group by name and count occurrences of each name
+SELECT name, COUNT(*) FROM students GROUP BY name
+```
+
+#### To exit the program, use the command `exit`.
