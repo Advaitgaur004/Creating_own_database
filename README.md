@@ -9,7 +9,8 @@ A lightweight C++ database implementation featuring SQL-like operations and tran
   - Create and describe tables with custom columns
   - Persistent storage of table data
   - Dynamic table operations
-
+  - Supports data persistence through file I/O
+  
 - **Data Operations**
   - INSERT records into tables
   - SELECT data with column filtering
