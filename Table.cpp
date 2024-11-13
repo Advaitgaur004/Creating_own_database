@@ -3,6 +3,7 @@
 #include <sstream>
 #include <algorithm>
 #include <map>
+#include <iomanip>
 
 // Initialize DATA_DIR as a constant
 const std::string DATA_DIR = "data/";
@@ -33,13 +34,21 @@ void Table::select(const std::vector<std::string>& select_columns,
                   const std::vector<std::string>& group_by) {
     // Determine columns to display
     std::vector<int> col_indices;
-    for (const auto& col : select_columns) {
-        auto it = std::find(columns.begin(), columns.end(), col);
-        if (it != columns.end()) {
-            col_indices.push_back(std::distance(columns.begin(), it));
-        } else {
-            std::cerr << "Error: Column " << col << " does not exist.\n";
-            return;
+    // If selected_columns is empty (SELECT *), use all columns
+    if (select_columns.empty()) {
+        col_indices.resize(columns.size());
+        for (size_t i = 0; i < columns.size(); ++i) {
+            col_indices[i] = i;
+        }
+    } else {
+        for (const auto& col : select_columns) {
+            auto it = std::find(columns.begin(), columns.end(), col);
+            if (it != columns.end()) {
+                col_indices.push_back(std::distance(columns.begin(), it));
+            } else {
+                std::cerr << "Error: Column " << col << " does not exist.\n";
+                return;
+            }
         }
     }
 
@@ -62,8 +71,9 @@ void Table::select(const std::vector<std::string>& select_columns,
         for (const auto& agg : aggregates) {
             std::string func = agg.first;
             std::string target = agg.second;
+            std::transform(func.begin(), func.end(), func.begin(), ::toupper);
             if (func == "COUNT") {
-                if (target == "*") {
+                if (target == "*" ) {
                     agg_functions.emplace_back(func, -1);
                 } else {
                     auto it = std::find(columns.begin(), columns.end(), target);
@@ -108,22 +118,22 @@ void Table::select(const std::vector<std::string>& select_columns,
 
         // Print header
         for (size_t i = 0; i < group_by.size(); ++i) {
-            std::cout << group_by[i];
+            std::cout << std::left << std::setw(15) << group_by[i];
             if (i != group_by.size() - 1 || !agg_functions.empty()) std::cout << " | ";
         }
         for (size_t i = 0; i < agg_functions.size(); ++i) {
-            std::cout << agg_functions[i].first << "(" << (agg_functions[i].second == -1 ? "*" : columns[agg_functions[i].second]) << ")";
+            std::cout << std::left << std::setw(15) << (agg_functions[i].second == -1 ? "COUNT(*)" : "COUNT(" + columns[agg_functions[i].second] + ")");
             if (i != agg_functions.size() - 1) std::cout << " | ";
         }
         std::cout << "\n";
 
         // Print separator
         for (size_t i = 0; i < group_by.size(); ++i) {
-            std::cout << "--------";
+            std::cout << "---------------";
             if (i != group_by.size() - 1 || !agg_functions.empty()) std::cout << "+";
         }
         for (size_t i = 0; i < agg_functions.size(); ++i) {
-            std::cout << "--------";
+            std::cout << "---------------";
             if (i != agg_functions.size() - 1) std::cout << "+";
         }
         std::cout << "\n";
@@ -135,7 +145,7 @@ void Table::select(const std::vector<std::string>& select_columns,
             size_t idx = 0;
             while (std::getline(ss, value, '_')) {
                 if (idx < group_by.size()) {
-                    std::cout << value;
+                    std::cout << std::left << std::setw(15) << value;
                     if (idx != group_by.size() - 1 || !agg_functions.empty()) std::cout << " | ";
                 }
                 idx++;
@@ -143,7 +153,7 @@ void Table::select(const std::vector<std::string>& select_columns,
             for (size_t i = 0; i < agg_functions.size(); ++i) {
                 if (agg_functions[i].first == "COUNT") {
                     if (agg_functions[i].second == -1) {
-                        std::cout << pair.second.size();
+                        std::cout << std::left << std::setw(15) << pair.second.size();
                     }
                     else {
                         // Count non-empty values in the specified column
@@ -153,10 +163,9 @@ void Table::select(const std::vector<std::string>& select_columns,
                                 count++;
                             }
                         }
-                        std::cout << count;
+                        std::cout << std::left << std::setw(15) << count;
                     }
                 }
-                // Future aggregate functions can be handled here
                 if (i != agg_functions.size() - 1) std::cout << " | ";
             }
             std::cout << "\n";
@@ -188,8 +197,14 @@ void Table::select(const std::vector<std::string>& select_columns,
     // Handle ORDER BY
     if (!order_by.empty()) {
         // Check if order_by columns exist
+        std::vector<int> order_indices;
+        std::vector<std::string> order_directions;
         for (const auto& ob : order_by) {
-            if (std::find(columns.begin(), columns.end(), ob.first) == columns.end()) {
+            auto it = std::find(columns.begin(), columns.end(), ob.first);
+            if (it != columns.end()) {
+                order_indices.push_back(std::distance(columns.begin(), it));
+                order_directions.push_back(ob.second);
+            } else {
                 std::cerr << "Error: ORDER BY column " << ob.first << " does not exist.\n";
                 return;
             }
@@ -197,15 +212,14 @@ void Table::select(const std::vector<std::string>& select_columns,
         // Sort the filtered_records
         std::sort(filtered_records.begin(), filtered_records.end(),
             [&](const Record& a, const Record& b) -> bool {
-                for (const auto& ob : order_by) {
-                    int idx = std::distance(columns.begin(), std::find(columns.begin(), columns.end(), ob.first));
+                for (size_t i = 0; i < order_indices.size(); ++i) {
+                    int idx = order_indices[i];
                     if (a.fields[idx] < b.fields[idx]) {
-                        return ob.second == "ASC";
+                        return order_directions[i] == "ASC";
                     }
                     else if (a.fields[idx] > b.fields[idx]) {
-                        return ob.second == "DESC";
+                        return order_directions[i] == "DESC";
                     }
-                    // If equal, continue to next ordering
                 }
                 return false;
             }
@@ -213,23 +227,32 @@ void Table::select(const std::vector<std::string>& select_columns,
     }
 
     // Print header
-    for (size_t i = 0; i < select_columns.size(); ++i) {
-        std::cout << select_columns[i];
-        if (i != select_columns.size() - 1 || !aggregates.empty()) std::cout << " | ";
+    if (select_columns.empty()) {
+        // For SELECT *
+        for (size_t i = 0; i < columns.size(); ++i) {
+            std::cout << std::left << std::setw(15) << columns[i];
+            if (i != columns.size() - 1 || !aggregates.empty()) std::cout << " | ";
+        }
+    } else {
+        for (size_t i = 0; i < select_columns.size(); ++i) {
+            std::cout << std::left << std::setw(15) << select_columns[i];
+            if (i != select_columns.size() - 1 || !aggregates.empty()) std::cout << " | ";
+        }
     }
     for (size_t i = 0; i < aggregates.size(); ++i) {
-        std::cout << aggregates[i].first << "(" << aggregates[i].second << ")";
+        std::cout << std::left << std::setw(15) << (aggregates[i].first + "(" + aggregates[i].second + ")");
         if (i != aggregates.size() - 1) std::cout << " | ";
     }
     std::cout << "\n";
 
     // Print separator
-    for (size_t i = 0; i < select_columns.size(); ++i) {
-        std::cout << "--------";
-        if (i != select_columns.size() - 1 || !aggregates.empty()) std::cout << "+";
+    size_t total_columns = select_columns.empty() ? columns.size() : select_columns.size();
+    for (size_t i = 0; i < total_columns; ++i) {
+        std::cout << "---------------";
+        if (i != total_columns - 1 || !aggregates.empty()) std::cout << "+";
     }
     for (size_t i = 0; i < aggregates.size(); ++i) {
-        std::cout << "--------";
+        std::cout << "---------------";
         if (i != aggregates.size() - 1) std::cout << "+";
     }
     std::cout << "\n";
@@ -237,34 +260,63 @@ void Table::select(const std::vector<std::string>& select_columns,
     // Print records
     for (const auto& record : filtered_records) {
         for (size_t i = 0; i < col_indices.size(); ++i) {
-            std::cout << record.fields[col_indices[i]];
+            std::cout << std::left << std::setw(15) << record.fields[col_indices[i]];
             if (i != col_indices.size() - 1 || !aggregates.empty()) std::cout << " | ";
         }
-        // Handle aggregates (if any without GROUP BY, typically SUM, COUNT, etc. would require aggregation over all records)
+        // Handle aggregates (if any without GROUP BY)
         for (size_t i = 0; i < aggregates.size(); ++i) {
             if (aggregates[i].first == "COUNT") {
                 if (aggregates[i].second == "*") {
-                    std::cout << "1"; // Each record counts as 1
+                    std::cout << std::left << std::setw(15) << "1"; // Each record counts as 1
                 }
                 else {
                     // Count non-empty values in the specified column
-                    int count = 0;
-                    for (const auto& rec : filtered_records) {
-                        auto it = std::find(columns.begin(), columns.end(), aggregates[i].second);
-                        if (it != columns.end()) {
-                            int idx = std::distance(columns.begin(), it);
-                            if (!rec.fields[idx].empty()) {
-                                count++;
-                            }
-                        }
+                    auto it = std::find(columns.begin(), columns.end(), aggregates[i].second);
+                    if (it != columns.end()) {
+                        int idx = std::distance(columns.begin(), it);
+                        int count = !record.fields[idx].empty() ? 1 : 0;
+                        std::cout << std::left << std::setw(15) << count;
                     }
-                    std::cout << count;
+                    else {
+                        std::cout << std::left << std::setw(15) << "0";
+                    }
                 }
             }
             // Future aggregate functions can be handled here
             if (i != aggregates.size() - 1) std::cout << " | ";
         }
         std::cout << "\n";
+    }
+
+    // Handle global aggregates without GROUP BY
+    if (!aggregates.empty() && group_by.empty()) {
+        std::cout << "\n";
+        // Print aggregate results
+        for (size_t i = 0; i < aggregates.size(); ++i) {
+            if (aggregates[i].first == "COUNT") {
+                if (aggregates[i].second == "*") {
+                    std::cout << "COUNT(*) = " << filtered_records.size() << "\n";
+                }
+                else {
+                    // Count non-empty values in the specified column
+                    auto it = std::find(columns.begin(), columns.end(), aggregates[i].second);
+                    if (it != columns.end()) {
+                        int idx = std::distance(columns.begin(), it);
+                        int count = 0;
+                        for (const auto& rec : filtered_records) {
+                            if (!rec.fields[idx].empty()) {
+                                count++;
+                            }
+                        }
+                        std::cout << "COUNT(" << aggregates[i].second << ") = " << count << "\n";
+                    }
+                    else {
+                        std::cout << "COUNT(" << aggregates[i].second << ") = 0\n";
+                    }
+                }
+            }
+            // Future aggregate functions can be handled here
+        }
     }
 }
 
@@ -303,6 +355,13 @@ void Table::update(const std::string& set_column, const std::string& set_value,
 }
 
 void Table::deleteRecords(const std::string& where_column, const std::string& where_value) {
+    if (!where_column.empty()) {
+        auto it = std::find(columns.begin(), columns.end(), where_column);
+        if (it == columns.end()) {
+            std::cerr << "Error: WHERE column " << where_column << " does not exist.\n";
+            return;
+        }
+    }
     auto initial_size = records.size();
     records.erase(
         std::remove_if(records.begin(), records.end(),
@@ -315,10 +374,7 @@ void Table::deleteRecords(const std::string& where_column, const std::string& wh
                     int idx = std::distance(columns.begin(), it);
                     return record.fields[idx] == where_value;
                 }
-                else {
-                    std::cerr << "Error: WHERE column " << where_column << " does not exist.\n";
-                    return false;
-                }
+                return false;
             }),
         records.end()
     );
@@ -342,7 +398,12 @@ void Table::save() {
     // Records
     for (const auto& record : records) {
         for (size_t i = 0; i < record.fields.size(); ++i) {
-            ofs << record.fields[i];
+            // Escape commas in fields
+            std::string field = record.fields[i];
+            if (field.find(',') != std::string::npos) {
+                field = "\"" + field + "\"";
+            }
+            ofs << field;
             if (i != record.fields.size() - 1) ofs << ",";
         }
         ofs << "\n";
@@ -362,9 +423,23 @@ void Table::load() {
         std::stringstream ss(line);
         std::string field;
         std::vector<std::string> fields;
-        while (std::getline(ss, field, ',')) {
-            fields.push_back(field);
+        bool in_quotes = false;
+        std::string current_field;
+        for (size_t i = 0; i < line.size(); ++i) {
+            char c = line[i];
+            if (c == '"' ) {
+                in_quotes = !in_quotes;
+            }
+            else if (c == ',' && !in_quotes) {
+                fields.push_back(current_field);
+                current_field.clear();
+            }
+            else {
+                current_field += c;
+            }
         }
+        fields.push_back(current_field);
+
         if (is_header) {
             columns = fields;
             is_header = false;

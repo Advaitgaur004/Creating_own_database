@@ -15,6 +15,8 @@ private:
     bool transaction_active = false;
     std::unordered_map<std::string, std::unique_ptr<Table>> table_backups;
 
+    void autoLoadTables(); // Added for auto-loading tables on start
+
 public:
     Database() = default;
 

@@ -34,6 +34,21 @@ void Database::loadTable(const std::string& name) {
     std::cout << "Table " << name << " loaded successfully.\n";
 }
 
+void Database::autoLoadTables() {
+    std::string data_dir = "data";
+    if (fs::exists(data_dir) && fs::is_directory(data_dir)) {
+        for (const auto& entry : fs::directory_iterator(data_dir)) {
+            if (entry.is_regular_file() && entry.path().extension() == ".tbl") {
+                std::string filename = entry.path().stem().string();
+                if (tables.find(filename) == tables.end()) {
+                    tables[filename] = std::make_unique<Table>(filename);
+                    std::cout << "Loaded table: " << filename << "\n";
+                }
+            }
+        }
+    }
+}
+
 Table* Database::getTable(const std::string& name) {
     auto it = tables.find(name);
     if (it != tables.end()) {
@@ -114,6 +129,9 @@ void Database::rollbackTransaction() {
 }
 
 void Database::run() {
+    // Auto load existing tables
+    autoLoadTables();
+
     std::string input;
     std::cout << "Welcome to MiniDB! Enter SQL commands or 'exit' to quit.\n";
     while (true) {
@@ -140,9 +158,13 @@ void Database::run() {
                 continue;
             }
             // Parse columns
-            std::string cols;
-            std::getline(ss, cols, '(');
-            std::getline(ss, cols, ')');
+            size_t pos1 = input.find('(');
+            size_t pos2 = input.find(')');
+            if (pos1 == std::string::npos || pos2 == std::string::npos || pos2 <= pos1 + 1) {
+                std::cerr << "Error: Invalid syntax for CREATE TABLE.\n";
+                continue;
+            }
+            std::string cols = input.substr(pos1 + 1, pos2 - pos1 - 1);
             std::vector<std::string> columns;
             std::stringstream cols_ss(cols);
             std::string col;
@@ -167,9 +189,13 @@ void Database::run() {
                 std::cerr << "Error: Invalid syntax. Use 'INSERT INTO table_name VALUES (...)'\n";
                 continue;
             }
-            std::string vals;
-            std::getline(ss, vals, '(');
-            std::getline(ss, vals, ')');
+            size_t pos1 = input.find('(');
+            size_t pos2 = input.find(')');
+            if (pos1 == std::string::npos || pos2 == std::string::npos || pos2 <= pos1 + 1) {
+                std::cerr << "Error: Invalid syntax for INSERT.\n";
+                continue;
+            }
+            std::string vals = input.substr(pos1 + 1, pos2 - pos1 - 1);
             std::vector<std::string> values;
             std::stringstream vals_ss(vals);
             std::string val;
